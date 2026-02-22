@@ -1,7 +1,7 @@
 package com.dryzaite.balloonpop.ui
 
-import android.media.AudioManager
-import android.media.ToneGenerator
+import android.media.AudioAttributes
+import android.media.SoundPool
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -25,8 +25,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -42,6 +44,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.dryzaite.balloonpop.R
 import com.dryzaite.balloonpop.data.Balloon
 import com.dryzaite.balloonpop.ui.theme.BalloonPopTheme
 import kotlin.math.PI
@@ -56,9 +59,20 @@ fun BalloonGameScreen(
 ) {
     val uiState by gameViewModel.uiState
     val isDarkTheme = isSystemInDarkTheme()
-    val popTone = remember {
-        runCatching { ToneGenerator(AudioManager.STREAM_MUSIC, 26) }.getOrNull()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val soundPool = remember {
+        SoundPool.Builder()
+            .setMaxStreams(2)
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_GAME)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build()
+            )
+            .build()
     }
+    var popSoundLoaded by remember { mutableStateOf(false) }
+    val popSoundId = remember(soundPool) { soundPool.load(context, R.raw.balloon_pop, 1) }
     val hoverTransition = rememberInfiniteTransition(label = "balloon-hover")
     val hoverPhase by hoverTransition.animateFloat(
         initialValue = 0f,
@@ -71,8 +85,13 @@ fun BalloonGameScreen(
     )
     val currentHoverPhase by rememberUpdatedState(hoverPhase)
 
-    DisposableEffect(Unit) {
-        onDispose { popTone?.release() }
+    DisposableEffect(soundPool, popSoundId) {
+        soundPool.setOnLoadCompleteListener { _, sampleId, status ->
+            if (sampleId == popSoundId && status == 0) {
+                popSoundLoaded = true
+            }
+        }
+        onDispose { soundPool.release() }
     }
 
     BoxWithConstraints(
@@ -108,7 +127,9 @@ fun BalloonGameScreen(
                             }
 
                             if (tapped != null && gameViewModel.popBalloon(tapped.balloon.id)) {
-                                popTone?.startTone(ToneGenerator.TONE_PROP_BEEP2, 55)
+                                if (popSoundLoaded) {
+                                    soundPool.play(popSoundId, 0.72f, 0.72f, 1, 0, 1.0f)
+                                }
                             }
                         }
                     }
